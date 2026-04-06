@@ -35,7 +35,7 @@ The **FiveM Log Management System** provides administrators, developers, and ser
 
 Stop relying on slow, unsearchable Discord webhook logs. Take control of your server's data with advanced filtering, weapon/vehicle statistics aggregations, and secure Discord OAuth2 staff authentication.
 
-## Key Features
+## Features
 
 - **High-Throughput Ingestion:** Custom Node.js backend handles thousands of events per second via optimized async bulk processing.
 - **Elasticsearch Powered:** Full-text search, pagination, and millisecond-level aggregations over millions of rows.
@@ -43,6 +43,17 @@ Stop relying on slow, unsearchable Discord webhook logs. Take control of your se
 - **Rich Analytics:** Automated statistical tracking of weapons used, vehicles spawned, and economic transactions.
 - **Modern Dashboard:** Next.js App Router, `shadcn/ui`, and Tailwind CSS combined for a flawless, snappy user experience.
 - **Plug & Play Lua:** A lightweight, non-blocking FiveM resource utilizing standard `exports` to drop straight into your existing frameworks (QBCore, ESX, or Custom).
+
+## Architecture
+
+The system operates on an event-driven decoupled model optimized for speed:
+
+1. **Ingest (Node.js):** A lightweight API that blindly accepts massive batches of JSON logs from your game server.
+2. **Storage (Elasticsearch):** Acts as the timeseries database for billions of logs, capable of instant aggregations and full-text searches.
+3. **Storage (MySQL):** Used exclusively for managing relational configuration data (like `servers` and `users`).
+4. **Dashboard (Next.js):** The proxy layer. It verifies Discord credentials via MySQL before securely querying Elasticsearch on the user's behalf.
+
+For a deeper dive into the system design, please review the full **[Architecture Overview](ARCHITECTURE.md)**.
 
 ## Repository Structure
 
