@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { query } from '@/lib/db'
 
-// Proxy search with role-based access:
-// - Global admin: her şeyi görür
-// - Server admin/mod: ilgili sunucuda her şeyi görür
-// - Diğerleri: sadece erişebildiği kanalların event_type/kategori kapsamı
+// Proxy search with server-level access validation:
+// - Global admin: Sees all logs across all servers.
+// - Server admin/mod: Sees all logs in their assigned server.
+// - Standard user: Must possess user_server_access to view server logs.
 export async function GET(request, { params }) {
   try {
     const user = await getCurrentUser()
