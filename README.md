@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NextJS-Dark.svg" width="60" alt="NextJS"/>
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NodeJS-Dark.svg" width="60" alt="NodeJS"/>
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/ElasticSearch.svg" width="60" alt="Elastic Search"/>
+  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/refs/heads/main/icons/Elasticsearch-Dark.svg" width="60" alt="Elastic Search"/>
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/MySQL-Dark.svg" width="60" alt="MySQL"/>
 
   <br/>
