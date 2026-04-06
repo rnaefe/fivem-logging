@@ -26,7 +26,6 @@ Elasticsearch is the backbone of the logging system's timeseries storage.
    ```bash
    curl -X GET "localhost:9200/"
    ```
-4. By default, the application is configured to connect to `http://localhost:9200` without authentication. For production environments, it is highly recommended to enable X-Pack security, set a password, and update your Node.js `.env` variables accordingly.
 
 ---
 
@@ -50,7 +49,7 @@ The relational state of the application (configurations, users, channels) is gov
 
 ## 4. Backend Service Configuration (Ingest)
 
-The backend service is responsible for ingesting logs and proxying Elasticsearch results.
+The backend service is responsible for ingesting logs and bridging Elasticsearch queries. It does not connect to MySQL.
 
 1. Navigate to the `backend` directory:
    ```bash
@@ -61,7 +60,8 @@ The backend service is responsible for ingesting logs and proxying Elasticsearch
    ```bash
    cp env.example .env
    ```
-3. Start the application:
+3. Ensure your Elasticsearch URL is correct inside `.env` (`ELASTICSEARCH_NODE=http://localhost:9200`).
+4. Start the application:
    ```bash
    npm run prod
    ```
@@ -72,7 +72,7 @@ The backend service is responsible for ingesting logs and proxying Elasticsearch
 ## 5. Discord Application Registration
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Click **New Application**. Name it appropriately (e.g., "Logging Dashboard").
+2. Click **New Application**. Name it appropriately.
 3. Navigate to the **OAuth2** tab.
 4. Add a redirect URI matching where your dashboard will reside:
    - Development: `http://localhost:3001/api/auth/callback`
@@ -83,7 +83,7 @@ The backend service is responsible for ingesting logs and proxying Elasticsearch
 
 ## 6. Dashboard Deployment (Frontend)
 
-The frontend visualizer runs via Next.js.
+The frontend visualizer runs via Next.js and connects to both MySQL (for settings/auth) and the Backend Ingest service.
 
 1. Navigate to the `dashboard` directory:
    ```bash
@@ -94,7 +94,7 @@ The frontend visualizer runs via Next.js.
    ```bash
    cp env.example .env.local
    ```
-3. Update `.env.local` carefully:
+3. Update `.env.local` exactly:
    ```text
    MYSQL_HOST=localhost
    MYSQL_USER=your_user
@@ -118,13 +118,15 @@ The frontend visualizer runs via Next.js.
 
 ---
 
-## 7. Connecting Your FiveM Server
+## 7. Configuration Defaults
+
+Make sure to assign yourself access to a server context to use the Dashboard!
 
 1. Open your MySQL client and find the `servers` table.
-2. Insert a new server defining your identifier and generating a custom unguessable `api_key`:
+2. Insert a new server defining your identifier and a custom `api_key`:
    ```sql
    INSERT INTO servers (identifier, name, api_key) 
-   VALUES ('rp_server_1', 'Main Roleplay Server', 'SECURE_RANDOM_KEY_HERE');
+   VALUES ('rp_server_1', 'Main Roleplay Server', 'fivem_3d31edce-c1a9-4ba1-837c-f905232c4a1e');
    ```
 3. Grant yourself access to this server via your Discord user ID inside `user_server_access`.
-4. Proceed to the Integration Guide to append the Lua files to your FiveM server.
+4. The Backend Lua ingest code inside your FiveM server utilizes `sv_projectName` (which evaluates as `rp_server_1` based on your `server.cfg`). Read `docs/INTEGRATION.md` for finalizing the FiveM game server scripts.

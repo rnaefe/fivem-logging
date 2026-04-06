@@ -1,6 +1,6 @@
 # FiveM Integration Guide
 
-This document explains how to properly embed the Logging System's resource file into your FiveM server stack. This is the mechanism responsible for intercepting game events, capturing localized metadata, and streaming it securely to your backend ingestion service.
+This document explains how to properly embed the `fivem-logging.lua` resource file into your FiveM server stack. This is the mechanism responsible for intercepting game events, capturing localized metadata, and streaming it securely to your backend ingestion service.
 
 ---
 
@@ -27,23 +27,22 @@ server_script 'fivem-logging.lua'
 
 ## 2. Server Configuration parameters
 
-The logger reads directly from global FiveM Convars to maintain isolation from specific MySQL iterations.
+Open `fivem-logging.lua` and evaluate the variables at the top of the file:
 
-1. Open your `server.cfg` file.
-2. Insert the following lines near the top, making sure you replace the placeholders with your actual configured variables:
+```lua
+-- Backend Configuration
+local BACKEND_URL = "http://localhost:3000/log"
+local IS_DEV_SERVER = GetConvar('isDevServer', 'false') == 'true'
+local SERVER_NAME = GetConvar("sv_hostname", "unknown")
+local SERVER_ID = GetConvar("sv_projectName", "unknown")
 
-```cfg
-# FiveM Logging System Endpoint
-set logs_api_url "http://<YOUR_BACKEND_IP>:3000"
-
-# Secret Key matching the backend `servers` database table
-set logs_api_key "SECURE_RANDOM_KEY_HERE"
-
-# Identifier matching the backend `servers` database table
-set logs_server_id "rp_server_1"
+local apikey = "fivem_3d31edce-c1a9-4ba1-837c-f905232c4a1e"
 ```
 
-3. Ensure the resource starts automatically when the server boots:
+1. Change `BACKEND_URL` to point to the IP and port where your Node.js ingest backend is listening. If running on the same machine, `http://localhost:3000/log` is correct.
+2. Ensure you have `sv_hostname` and `sv_projectName` set in your `server.cfg` as these are used to stamp incoming logs with your server's identity.
+
+Ensure the resource starts automatically when the server boots:
 
 ```cfg
 ensure fivem-logger
@@ -53,76 +52,57 @@ ensure fivem-logger
 
 ## 3. Creating Custom Log Implementations
 
-The provided script hooks natively into basic events such as player joining, dropping, and chat messaging. However, you will likely need to embed exports into arbitrary business logic (such as completing drug runs, transferring cash, or purchasing properties).
+The provided script hooks natively into basic events such as player joining, dropping, and txAdmin messaging. It also includes ox_inventory transaction hooks.
 
-You can dispatch logs natively from any other FiveM resource using standard Lua `exports`.
+You can dispatch logs natively from any other FiveM resource using standard Lua `exports`. Ensure that the export target points to the literal name of the resource folder if you renamed it (e. g., `exports['fivem-logger']:...`), but the default examples below assume the folder name is `fivem-logging` to match standard syntax. Note: if you placed `fivem-logging.lua` in a folder named `fivem-logger`, the export array key is `fivem-logger`.
 
-### The Core Export
+### Legacy Messaging Export
 
-**`exports['fivem-logger']:sendLog(event_type, category, message, metadata)`**
+**`exports['fivem-logger']:sendLogThroughApi(channelId, message)`**
 
-- `event_type` (String): A strict, snake_case descriptor of the action (e.g. `robbery_started`, `vehicle_bought`).
-- `category` (String): The master categorization used for filtering in the dashboard (e.g. `economy`, `criminal`).
-- `message` (String): Human-readable sentence explaining the event.
-- `metadata` (Table): Optional. Any serialized JSON data that adds context (Coordinates, weapon hashes, target identifiers).
+Use this to funnel simple text strings.
 
-### Implementation Examples
+### Weapon and Vehicle Logging Exports
 
-**Example A: Logging an Economy Transaction (eX_Core)**
+The lua file directly exposes automated handling for vehicles and weapons so that you don't need to craft custom payloads for standard features.
 
+**`exports['fivem-logger']:logWeaponUsage(weaponName, isKill)`**
 ```lua
--- Runs inside your server-side cash handler
-RegisterNetEvent('core:TransferMoney', function(targetId, amount)
-    local src = source
-    local senderName = GetPlayerName(src)
-    local receiverName = GetPlayerName(targetId)
-
-    -- Deduct money logic here ...
-
-    exports['fivem-logger']:sendLog(
-        "cash_transfer",
-        "economy",
-        string.format("%s transferred $%d to %s", senderName, amount, receiverName),
-        {
-            sender_id = src,
-            receiver_id = targetId,
-            amount_transferred = amount
-        }
-    )
+AddEventHandler('weapons:onPlayerFired', function(weaponName)
+    exports['fivem-logger']:logWeaponUsage(weaponName, false)
 end)
 ```
 
-**Example B: Logging a Staff Action (TxAdmin)**
-
-The core script already comes packaged with TxAdmin native hooks, but if you have a custom `/ban` command written in Lua, you can catch it easily:
-
+**`exports['fivem-logger']:logVehicleSpawn(vehicleName)`**
 ```lua
-RegisterCommand('customban', function(source, args, rawCommand)
-    local target = tonumber(args[1])
-    local reason = table.concat(args, " ", 2)
+AddEventHandler('esx:spawnVehicle', function(model, coords, heading)
+    exports['fivem-logger']:logVehicleSpawn(model)
+end)
+```
 
-    -- Ban Logic ...
+### Adding New Custom Implementations
 
-    exports['fivem-logger']:sendLog(
-        "player_banned",
-        "staff",
-        string.format("%s banned %s completely. Reason: %s", GetPlayerName(source), GetPlayerName(target), reason),
-        {
-            admin_id = source,
-            punished_target = target,
-            ban_duration = "permanent",
-            reason = reason
-        }
-    )
-end, true)
+To add completely custom events (like drug sales or banking), simply define a new `AddEventHandler` anywhere inside `fivem-logging.lua` or duplicate the `sendLogToBackend` helper inside other resources directly to post arbitrary JSON to your backend.
+
+Example hooking inside `fivem-logging.lua`:
+```lua
+RegisterNetEvent('core:TransferMoney', function(targetId, amount)
+    local src = source
+    local senderInfo = getPlayerInfo(src)
+    local receiverInfo = getPlayerInfo(targetId)
+
+    sendLogToBackend("cash_transfer", "economy", {
+        amount_transferred = amount,
+        sender = senderInfo,
+        receiver = receiverInfo
+    }, { player = senderInfo })
+end)
 ```
 
 ---
 
 ## 4. Troubleshooting Network Jitter
 
-The script implements batch buffering. It queues logs inside memory and fires them dynamically in arrays over HTTP to ensure a locked `PerformHttpRequest` thread doesn't stutter other callbacks. 
+The script utilizes standard `PerformHttpRequest`. The function is natively asynchronous under the hood of FiveM so it shouldn't stutter the main thread. However, under intense load (1000s of players), if your backend is physically distanced from the game server, TCP delays can mount.
 
-If you notice logs arriving at the dashboard in heavy, delayed spikes:
-1. Ensure your Node.js ingest backend is physically located close to the FiveM game server VPS (ideally the exact same machine or datacenter).
-2. Check the `fivem-logging.lua` logic for the flush timer loop and consider lowering the queue threshold if necessary.
+Make sure your backend Node.js server sits in the same datacenter to keep latency sub 10ms.

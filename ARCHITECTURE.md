@@ -1,6 +1,6 @@
 # Architecture Overview
 
-The **FiveM Log Management System** relies on a decoupled, microservice-inspired architecture. By isolating the ingest layer from the dashboard layer, and separating search indexing from relational storage, the system achieves maximum stability and performance under heavy load.
+The **FiveM Log Management System** relies on a decoupled architecture. By isolating the ingest layer from the dashboard layer, and separating search indexing from relational storage, the system achieves stability and performance under heavy load.
 
 ---
 
@@ -8,16 +8,13 @@ The **FiveM Log Management System** relies on a decoupled, microservice-inspired
 
 ```mermaid
 graph TD;
-    GameServer[FiveM Game Server] -->|HTTP POST| Ingest[Backend Ingest Server]
-    Ingest -->|Bulk Insert| Elastic[(Elasticsearch)]
-    Ingest -->|Read Server Keys| MySQL[(MySQL)]
+    GameServer[FiveM Game Server] -->|HTTP POST JSON| Ingest[Backend Ingest Server]
+    Ingest -->|Bulk Insert / Queries| Elastic[(Elasticsearch)]
     
     Browser[Staff Web Browser] -->|Auth/View| Dashboard[Next.js Dashboard]
     Dashboard -->|Verify Auth| Discord[Discord OAuth2]
-    Dashboard -->|Verify Access| MySQL
+    Dashboard -->|Verify Access| MySQL[(MySQL)]
     Dashboard -->|Proxied Search Request| Ingest
-    
-    Ingest -->|Aggregations & Queries| Elastic
 ```
 
 ---
@@ -28,29 +25,29 @@ graph TD;
 Operating within the FiveM server runtime, the logging resource has one responsibility: capture context and quickly flush it.
 - **Non-Blocking:** Uses `PerformHttpRequest` to ensure the main server thread never stutters during logging.
 - **Resilience:** If the ingest backend goes down, the Lua layer gracefully swallows errors rather than crashing the FiveM server loop.
-- **Pluggable:** Standardized `exports` allow integration across any framework (ESX, QBCore, vRP).
+- **Pre-configured:** Directly points to your backend instance via internal file variables.
 
 ### 2. Node.js Ingest Service
 The core highway of the application. High traffic FiveM servers generate hundreds of logs a second (player movements, economy ticks).
 - **Technology:** Node.js, Express, and `@elastic/elasticsearch`.
-- **Security:** Verifies incoming `Authorization: Bearer <API_KEY>` against the registered server tokens in MySQL. Drops unauthorized traffic immediately.
-- **Routing:** Exposes standard endpoints (`/log`, `/search`) ensuring that the database itself is never directly accessible via the public internet.
+- **Purpose:** Exposes standard endpoints (`/log`, `/search`, `/stats`) acting as a proxy layer directly into Elasticsearch.
+- **Security Note:** In the current structure, the Ingest layer blindly accepts logs. It depends on network isolation (e.g., firewalling port 3000 to only accept traffic from the FiveM host and the Dashboard host) to ensure integrity.
 
 ### 3. Dual-Database Paradigm
 Attempting to store high-volume logs in SQL tables leads to severe performance degradation. This project utilizes two highly optimized engines for their exact intended purposes:
-- **Elasticsearch (Time-Series / Logging):** Completely dynamic JSON ingest capabilities. Handles millions of full-text search string matches in under 20 milliseconds.
-- **MySQL (Configuration / Relational):** Handles statically structured data such as `log_channels` configs, Discord `users`, and `user_server_access` mappings. Provides robust normalization.
+- **Elasticsearch (Time-Series / Logging):** Completely dynamic JSON ingest capabilities. Handles millions of full-text search string matches rapidly.
+- **MySQL (Configuration / Relational):** Only accessed by the Dashboard. Handles statically structured data such as `log_channels` configs, Discord `users`, and `user_server_access` mappings. Provides robust normalization.
 
 ### 4. Next.js Admin Dashboard
-The user-facing portal built on cutting-edge React paradigms.
+The user-facing portal built on modern React paradigms.
 - **Framework:** Next.js (Server Components + App Router).
-- **Authentication Strategy:** Stateless JWT verification generated locally after verifying identity with Discord. There are no server-side sessions stored in memory, making the dashboard horizontally scalable.
-- **Proxy Layer:** The frontend never touches Elasticsearch directly. Search requests from users are proxied securely through Next.js API boundaries to the Ingest backend.
+- **Authentication Strategy:** Stateless JWT verification generated locally after verifying identity with Discord. There are no server-side sessions stored in memory.
+- **Proxy Layer:** The frontend never touches Elasticsearch directly. Search requests from users are authenticated against their MySQL permissions, and then correctly formatted params are proxied securely to the Ingest backend.
 
 ---
 
 ## Security Posture
 
-1. **In-Transit Encryption:** While not built-in via the codebase natively, deploying the backend behind a reverse-proxy (NGINX/Cloudflare) easily enforces HTTPS/TLS encryption.
-2. **Access Control (RBAC):** Server isolation is maintained in MySQL. Authenticated users cannot even view log channel definitions of a server they haven't been assigned to via `user_server_access`.
+1. **Access Control:** Server isolation is maintained in MySQL by the Next.js dashboard. Authenticated users cannot even view log channel definitions of a server they haven't been assigned to via `user_server_access`.
+2. **Internal Network Separation:** Because the Node.js ingest listens for `POST /log` without an auth middleware, it is assumed you will close public internet access to the backend's port, explicitly allowing local traffic from your FiveM resources and Next.js instance.
 3. **Prevention of Query Injection:** The Elasticsearch client utilizes structured JSON query DSL. Input passed from the web is safely parameterized before hitting the DB layer.

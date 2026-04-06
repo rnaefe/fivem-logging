@@ -1,69 +1,56 @@
 # API Reference
 
-The backend exposes a highly optimized RESTful Application Programming Interface (API) to read and write logs. 
+The backend exposes a lightweight REST API mapping to Elasticsearch indices. 
 
-While the provided Lua wrapper script (`fivem-logging.lua`) interacts with these endpoints natively, server administrators can write custom integrations using the endpoints documented below.
-
----
-
-## Authentication
-
-Both major ingestion endpoints and proxied query endpoints require the `Authorization` header utilizing a Bearer Token setup. The token used is the `api_key` assigned to the specific server inside the MySQL `servers` table.
-
-```http
-Authorization: Bearer <API_KEY>
-```
+The provided Lua wrapper script (`fivem-logging.lua`) interacts with the `/log` endpoint natively. Next.js proxies traffic to `/search`.
 
 ---
 
 ## Ingest Endpoints
 
-### 1. Ingest Log Batch
+### 1. Ingest Log
 
-**Endpoint:** `POST /log/batch`
+**Endpoint:** `POST /log`
 
-Use this endpoint to submit an array of logs in one singular network transaction. This is the optimal route to eliminate network jitter causing queue bottlenecks.
+Submits a new log entry. The backend will automatically add a `@timestamp` field if one is not provided.
 
-**Request Body:**
+**Content-Type:** `application/json`
+
+**Request Body Example:**
 
 ```json
 {
-  "server_id": "rp_server_1",
-  "logs": [
-    {
-      "event_type": "player_killed",
-      "category": "combat",
-      "message": "Player A shot Player B",
-      "player_id": 12,
-      "player_name": "Player A",
-      "identifier": "license:abc123def",
-      "metadata": {
-        "weapon": "WEAPON_PISTOL",
-        "distance": 1.2
-      }
+  "event_type": "item_swapped",
+  "category": "inventory",
+  "isDevServer": false,
+  "server": {
+    "name": "My FiveM Server",
+    "id": "sv_123"
+  },
+  "payload": {
+    "action": "move",
+    "source": 1,
+    "count": 5
+  },
+  "player": {
+    "id": 1,
+    "name": "PlayerName",
+    "identifiers": {
+      "license": "license:abc123def"
     }
-  ]
+  }
 }
 ```
 
 **Success Response:**
-`HTTP 200 OK`
+`HTTP 201 Created`
 
 ```json
 {
-  "success": true,
-  "count": 1
+  "ok": true,
+  "id": "elastic_document_id"
 }
 ```
-
-### 2. Ingest Single Log
-
-**Endpoint:** `POST /log`
-
-A legacy wrapper around the batching logic for immediate ingestion of critical single events. Use sparsely compared to the `batch` endpoint.
-
-**Request Body:**
-Expects the exact inner block of the `logs` array object detailed in `POST /log/batch`.
 
 ---
 
@@ -73,38 +60,32 @@ Expects the exact inner block of the `logs` array object detailed in `POST /log/
 
 **Endpoint:** `GET /search`
 
-Facilitates the retrieval of historical logs indexed in Elasticsearch. This is generally interfaced by the Next.js Dashboard.
+Queries historical logs formatted for the dashboard. The dashboard automatically appends required parameters based on user permissions.
 
 **Parameters:**
-- `server_id` (String, required): The internal identifier.
+- `server_id` (String, required): The core server identifier.
 - `page` (Int, optional): Pagination index, default `1`.
 - `limit` (Int, optional): Elements per query, default `50`.
-- `query` (String, optional): Full-text search term targeting message / metadata strings.
-- `categories` (String, optional): Comma-separated list of log categories.
-- `event_types` (String, optional): Comma-separated list of event identifiers.
+- `query` (String, optional): Full-text search string.
+- `categories` (String, optional): Comma-separated list of log categories to filter.
+- `event_types` (String, optional): Comma-separated list of exact events to filter.
 
 **Example Request:**
 ```http
-GET /search?server_id=rp_server_1&page=1&limit=25&categories=combat
-Authorization: Bearer <API_KEY>
+GET /search?server_id=sv_123&page=1&limit=25&categories=combat
 ```
 
 ### 2. Analytical Stat Aggregation
 
-**Endpoint:** `POST /stats/weapons` (or `/stats/vehicles`)
+**Endpoint:** `GET /stats/weapons` and `GET /stats/vehicles`
 
-Leverages Elasticsearch's internal bucket aggregation mechanics to crunch thousands of past variables without pulling exact documents into Node.js.
+Leverages Elasticsearch's bucket aggregations to count common terms across the entire historical dataset matching the server.
 
-**Request Body:**
+**Parameters:**
+- `server_id` (String, required)
+- `timeRange` (String, optional): Example `24h`, `7d`, `30d`.
 
-```json
-{
-  "server_id": "rp_server_1",
-  "timeRange": "24h" 
-}
-```
-
-**Response:**
+**Response (Weapons Example):**
 
 ```json
 {
@@ -117,11 +98,16 @@ Leverages Elasticsearch's internal bucket aggregation mechanics to crunch thousa
 
 ---
 
-## Status Codes
+## System Endpoints
 
-The API operates utilizing standard REST HTTP Response codes:
+### 1. Metadata Fields
 
-- `200 OK`: Request succeeded.
-- `400 Bad Request`: General payload formatting error or missing core parameters.
-- `401 Unauthorized`: API key is invalid, missing, or missing standard Bearer declaration.
-- `500 Server Error`: Internal Elasticsearch ingestion refusal or MySQL failure.
+**Endpoint:** `GET /meta/list`
+
+Returns a list of all distinct `categories` and `event_types` currently existing in the Elasticsearch database, allowing the Dashboard to dynamically populate dropdowns.
+
+### 2. Health
+
+**Endpoint:** `GET /health`
+
+Quick ping to check if the Node service is alive.
