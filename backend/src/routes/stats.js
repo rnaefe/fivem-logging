@@ -1,21 +1,32 @@
 const express = require('express');
+const { z } = require('zod');
 const client = require('../elastic/client');
+const requireInternalKey = require('../internalAuth');
 
 const router = express.Router();
 const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
-// Get top weapons (aggregation on combat events)
-router.get('/stats/weapons', async (req, res) => {
-  try {
-    const { 
-      days = 7,      // Son kaç gün
-      limit = 10,    // Kaç silah
-      server_id      // Sunucu filtresi (zorunlu)
-    } = req.query;
+const statsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(7),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  server_id: z.string().min(1).max(128)
+});
 
-    if (!server_id) {
-      return res.status(400).json({ error: 'server_id is required' });
-    }
+function parseStatsQuery(req, res) {
+  const parsed = statsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid stats query', details: parsed.error.flatten() });
+    return null;
+  }
+  return parsed.data;
+}
+
+// Get top weapons (aggregation on combat events)
+router.get('/stats/weapons', requireInternalKey, async (req, res) => {
+  try {
+    const parsed = parseStatsQuery(req, res);
+    if (!parsed) return;
+    const { days, limit, server_id } = parsed;
 
     const must = [
       { term: { 'category.keyword': 'combat' } },
@@ -23,8 +34,8 @@ router.get('/stats/weapons', async (req, res) => {
         bool: {
           should: [
             { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
+            { term: { 'server.id': server_id } },
+            { match_phrase: { 'server.id': server_id } }
           ],
           minimum_should_match: 1
         }
@@ -49,7 +60,7 @@ router.get('/stats/weapons', async (req, res) => {
         top_weapons: {
           terms: {
             field: 'payload.weaponName.keyword',
-            size: parseInt(limit),
+            size: limit,
             order: { _count: 'desc' }
           },
           aggs: {
@@ -93,17 +104,11 @@ router.get('/stats/weapons', async (req, res) => {
 });
 
 // Get top vehicles (aggregation on vehicle events)
-router.get('/stats/vehicles', async (req, res) => {
+router.get('/stats/vehicles', requireInternalKey, async (req, res) => {
   try {
-    const { 
-      days = 7,
-      limit = 10,
-      server_id
-    } = req.query;
-
-    if (!server_id) {
-      return res.status(400).json({ error: 'server_id is required' });
-    }
+    const parsed = parseStatsQuery(req, res);
+    if (!parsed) return;
+    const { days, limit, server_id } = parsed;
 
     const must = [
       { term: { 'category.keyword': 'vehicle' } },
@@ -111,8 +116,8 @@ router.get('/stats/vehicles', async (req, res) => {
         bool: {
           should: [
             { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
+            { term: { 'server.id': server_id } },
+            { match_phrase: { 'server.id': server_id } }
           ],
           minimum_should_match: 1
         }
@@ -137,7 +142,7 @@ router.get('/stats/vehicles', async (req, res) => {
         top_vehicles: {
           terms: {
             field: 'payload.vehicleName.keyword',
-            size: parseInt(limit),
+            size: limit,
             order: { _count: 'desc' }
           }
         },
@@ -167,21 +172,19 @@ router.get('/stats/vehicles', async (req, res) => {
 });
 
 // General stats endpoint
-router.get('/stats', async (req, res) => {
+router.get('/stats', requireInternalKey, async (req, res) => {
   try {
-    const { days = 7, server_id } = req.query;
-
-    if (!server_id) {
-      return res.status(400).json({ error: 'server_id is required' });
-    }
+    const parsed = parseStatsQuery(req, res);
+    if (!parsed) return;
+    const { days, server_id } = parsed;
 
     const must = [
       {
         bool: {
           should: [
             { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
+            { term: { 'server.id': server_id } },
+            { match_phrase: { 'server.id': server_id } }
           ],
           minimum_should_match: 1
         }
@@ -233,8 +236,8 @@ router.get('/stats', async (req, res) => {
         bool: {
           should: [
             { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
+            { term: { 'server.id': server_id } },
+            { match_phrase: { 'server.id': server_id } }
           ],
           minimum_should_match: 1
         }

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test_integration.js"
+    "test": "node test_security.js"
   },
   "keywords": [
     "telemetry",
@@ -21,6 +21,7 @@
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
+    "mysql2": "^3.22.5",
     "zod": "^4.2.0"
   }
 }

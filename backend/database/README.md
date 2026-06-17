@@ -67,6 +67,6 @@ SET is_admin = TRUE
 WHERE discord_id = '123456789012345678';
 ```
 
-## Important Detail
+## Ingest API Keys
 
-`servers.api_key` exists in the schema, but the current backend ingest route does not enforce it. Treat that column as ready state for API-key hardening, not as active protection. Until enforcement is added, protect ingest with network controls.
+`POST /log` validates `x-telemetry-key` or `Authorization: Bearer ...` against `servers.api_key` and requires the key to belong to the emitted `server.id`. Keep the ingest service private anyway; the key is an application gate, not a substitute for network controls.

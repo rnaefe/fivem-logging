@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { queryOne } from '@/lib/db'

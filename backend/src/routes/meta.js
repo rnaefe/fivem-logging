@@ -1,14 +1,23 @@
 const express = require('express');
+const { z } = require('zod');
 const client = require('../elastic/client');
+const requireInternalKey = require('../internalAuth');
 
 const router = express.Router();
 const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
+const metaQuerySchema = z.object({
+  size: z.coerce.number().int().min(1).max(1000).default(200)
+});
+
 // Return distinct categories and event_types from ES
-router.get('/meta/terms', async (req, res) => {
+router.get('/meta/terms', requireInternalKey, async (req, res) => {
   try {
-    const { size = 200 } = req.query;
-    const aggSize = parseInt(size) || 200;
+    const parsed = metaQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid meta query', details: parsed.error.flatten() });
+    }
+    const aggSize = parsed.data.size;
 
     const result = await client.search({
       index: INDEX_NAME,

@@ -1,0 +1,89 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: elastic_telemetry
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -proot_password --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      PORT: 3000
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX: runtime-logs
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root_password
+      MYSQL_DATABASE: elastic_telemetry
+      INTERNAL_API_KEY: local_internal_key_change_me
+      REQUIRE_INTERNAL_API_KEY: "true"
+      REQUIRE_INGEST_API_KEY: "true"
+      CORS_ORIGIN: http://localhost:3001
+      JSON_BODY_LIMIT: 1mb
+      LOG_RATE_LIMIT_WINDOW_MS: 60000
+      LOG_RATE_LIMIT_MAX: 1000
+    ports:
+      - "3000:3000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  dashboard:
+    build:
+      context: ./dashboard
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root_password
+      MYSQL_DATABASE: elastic_telemetry
+      JWT_SECRET: local_jwt_secret_change_me_32_chars_minimum
+      DISCORD_CLIENT_ID: replace_me
+      DISCORD_CLIENT_SECRET: replace_me
+      DISCORD_REDIRECT_URI: http://localhost:3001/api/auth/callback
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      INTERNAL_API_KEY: local_internal_key_change_me
+    ports:
+      - "3001:3001"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  es-data:
+  mysql-data:

@@ -104,14 +104,17 @@ Current hard boundaries:
 
 - dashboard routes require a valid session for protected data
 - server search checks MySQL access before proxying
+- server-scoped search forces `server_id` from the checked route, not from client query strings
+- ingest validates telemetry API keys against active MySQL server records
+- backend search, stats, and metadata endpoints require `x-internal-key`
 - Elasticsearch is not exposed directly to the browser
 - backend query construction uses structured Query DSL objects
 
 Current deployment boundary:
 
-- `POST /log` is lightweight and does not currently enforce the `servers.api_key` column
+- `POST /log` is still a high-volume endpoint, so it should remain private or allowlisted even with API-key validation
 
-So production deployments should keep ingest private, firewall it to trusted emitters, put it behind a reverse proxy with allowlists, or add API-key enforcement before public exposure. That is an intentional honesty point: high-volume ingest stays cheap, but public ingest needs a gate.
+So production deployments should keep ingest private, firewall it to trusted emitters, or put it behind a reverse proxy with allowlists. That is an intentional honesty point: high-volume ingest stays cheap, but public ingest still needs a network gate.
 
 ## Why The Split Holds Up
 

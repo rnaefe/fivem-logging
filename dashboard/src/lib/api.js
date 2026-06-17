@@ -1,5 +1,3 @@
-import { API_URL } from './utils'
-
 // ==========================================
 // LOG SEARCH
 // ==========================================
@@ -26,9 +24,8 @@ export async function searchLogs(params = {}) {
   if (params.limit) searchParams.append('limit', params.limit)
 
   const serverId = params.server_id
-  const url = serverId
-    ? `/api/servers/${serverId}/search?${searchParams.toString()}`
-    : `${API_URL}/search?${searchParams.toString()}`
+  if (!serverId) throw new Error('server_id is required')
+  const url = `/api/servers/${serverId}/search?${searchParams.toString()}`
 
   const response = await fetch(url)
   
@@ -49,7 +46,8 @@ export async function getStats(params = {}) {
   if (params.days) searchParams.append('days', params.days)
   if (params.server_id) searchParams.append('server_id', params.server_id)
   
-  const response = await fetch(`${API_URL}/stats?${searchParams.toString()}`)
+  if (!params.server_id) throw new Error('server_id is required')
+  const response = await fetch(`/api/servers/${params.server_id}/stats?${searchParams.toString()}`)
   
   if (!response.ok) {
     throw new Error('Failed to load stats')
@@ -65,7 +63,9 @@ export async function getTopWeapons(params = {}) {
   if (params.limit) searchParams.append('limit', params.limit)
   if (params.server_id) searchParams.append('server_id', params.server_id)
   
-  const response = await fetch(`${API_URL}/stats/weapons?${searchParams.toString()}`)
+  if (!params.server_id) throw new Error('server_id is required')
+  searchParams.append('kind', 'weapons')
+  const response = await fetch(`/api/servers/${params.server_id}/stats?${searchParams.toString()}`)
   
   if (!response.ok) {
     throw new Error('Failed to load weapon stats')
@@ -81,7 +81,9 @@ export async function getTopVehicles(params = {}) {
   if (params.limit) searchParams.append('limit', params.limit)
   if (params.server_id) searchParams.append('server_id', params.server_id)
   
-  const response = await fetch(`${API_URL}/stats/vehicles?${searchParams.toString()}`)
+  if (!params.server_id) throw new Error('server_id is required')
+  searchParams.append('kind', 'vehicles')
+  const response = await fetch(`/api/servers/${params.server_id}/stats?${searchParams.toString()}`)
   
   if (!response.ok) {
     throw new Error('Failed to load vehicle stats')

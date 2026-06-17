@@ -10,6 +10,16 @@ This stack is small enough to run on one VPS, but it is not pretending to be one
 - Discord Developer Application for OAuth login
 - PM2, systemd, Docker, or another process manager for production
 
+## Quick Local Stack
+
+For a local full-stack run:
+
+```bash
+docker compose up --build
+```
+
+This starts Elasticsearch, MySQL, the backend, and the dashboard. Replace the compose secrets before using the file anywhere shared.
+
 ## 1. Start Elasticsearch
 
 Install Elasticsearch for your host, start it, then verify the node:
@@ -44,6 +54,20 @@ Set the Elasticsearch target:
 PORT=3000
 ELASTICSEARCH_NODE=http://localhost:9200
 ELASTICSEARCH_INDEX=runtime-logs
+
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=your_user
+MYSQL_PASSWORD=your_pass
+MYSQL_DATABASE=elastic_telemetry
+
+REQUIRE_INGEST_API_KEY=true
+REQUIRE_INTERNAL_API_KEY=true
+INTERNAL_API_KEY=replace_with_openssl_rand_hex_32
+CORS_ORIGIN=http://localhost:3001
+LOG_RATE_LIMIT_WINDOW_MS=60000
+LOG_RATE_LIMIT_MAX=1000
+JSON_BODY_LIMIT=1mb
 ```
 
 Run it:
@@ -104,6 +128,7 @@ DISCORD_CLIENT_SECRET=your_discord_client_secret
 DISCORD_REDIRECT_URI=http://localhost:3001/api/auth/callback
 
 NEXT_PUBLIC_API_URL=http://localhost:3000
+INTERNAL_API_KEY=same_value_as_backend_internal_api_key
 ```
 
 Build and run:
@@ -147,6 +172,7 @@ Any runtime that can send HTTP JSON can emit logs:
 ```bash
 curl -X POST http://your-backend-host:3000/log \
   -H 'Content-Type: application/json' \
+  -H 'x-telemetry-key: telemetry_3d31edce-c1a9-4ba1-837c-f905232c4a1e' \
   -d '{
     "event_type": "job_completed",
     "category": "worker",
@@ -161,7 +187,7 @@ Make sure the emitted `server.id` matches the MySQL `servers.identifier`, becaus
 
 - Keep Elasticsearch off the public internet.
 - Keep backend ingest private or protected by firewall/reverse-proxy rules.
-- The schema has `servers.api_key`, but current `/log` handling does not enforce it yet.
+- `/log` validates `x-telemetry-key` against the active source row in MySQL.
 - Use HTTPS for the dashboard and OAuth callback.
 - Rotate `JWT_SECRET` carefully; existing sessions become invalid.
 - Put backend and dashboard under PM2, systemd, Docker, or another supervisor.

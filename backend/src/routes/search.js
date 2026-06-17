@@ -1,11 +1,35 @@
 const express = require('express');
+const { z } = require('zod');
 const client = require('../elastic/client');
+const requireInternalKey = require('../internalAuth');
 
 const router = express.Router();
 const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
-router.get('/search', async (req, res) => {
+const querySchema = z.object({
+  license: z.string().max(128).optional(),
+  event_type: z.string().max(128).optional(),
+  event_types: z.string().max(1000).optional(),
+  category: z.string().max(128).optional(),
+  categories: z.string().max(1000).optional(),
+  q: z.string().max(256).optional(),
+  player_name: z.string().max(128).optional(),
+  server_name: z.string().max(128).optional(),
+  server_id: z.string().min(1).max(128),
+  isDevServer: z.enum(['true', 'false']).optional(),
+  date_from: z.string().max(64).refine(value => !Number.isNaN(Date.parse(value)), 'Invalid date_from').optional(),
+  date_to: z.string().max(64).refine(value => !Number.isNaN(Date.parse(value)), 'Invalid date_to').optional(),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50)
+});
+
+router.get('/search', requireInternalKey, async (req, res) => {
   try {
+    const parsed = querySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid search query', details: parsed.error.flatten() });
+    }
+
     const {
       license,
       event_type,
@@ -19,12 +43,12 @@ router.get('/search', async (req, res) => {
       isDevServer,
       date_from,
       date_to,
-      page = 1,
-      limit = 50
-    } = req.query;
+      page,
+      limit
+    } = parsed.data;
 
-    const from = (parseInt(page) - 1) * parseInt(limit);
-    const size = parseInt(limit);
+    const from = (page - 1) * limit;
+    const size = limit;
 
     const must = [];
 
@@ -110,9 +134,9 @@ router.get('/search', async (req, res) => {
       must.push({
         bool: {
           should: [
+            { term: { "server.id": server_id } },
             { term: { "server.id.keyword": server_id } },
-            { match_phrase: { "server.id": server_id } },
-            { wildcard: { "server.id": { value: `*${server_id}*`, case_insensitive: true } } }
+            { match_phrase: { "server.id": server_id } }
           ],
           minimum_should_match: 1
         }
@@ -189,8 +213,8 @@ router.get('/search', async (req, res) => {
     res.json({
       items: hits,
       total: result.hits.total.value,
-      page: parseInt(page),
-      limit: parseInt(limit)
+      page,
+      limit
     });
 
   } catch (error) {

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { query } from '@/lib/db'
@@ -46,20 +48,23 @@ export async function GET(request, { params }) {
     }
 
     // Backend query paramları
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
     const paramsOut = new URLSearchParams()
     for (const [key, val] of searchParams.entries()) {
       paramsOut.append(key, val)
     }
-    // server_id'yi ES için identifier olarak zorla
-    paramsOut.set('server_id', paramsOut.get('server_id') || serverIdentifier)
+    // Client-provided server_id must never override the scoped route.
+    paramsOut.set('server_id', serverIdentifier)
 
     console.log('[Search] proxying to backend', {
       backendUrl,
       params: paramsOut.toString()
     })
 
-    const res = await fetch(`${backendUrl}/search?${paramsOut.toString()}`)
+    const res = await fetch(`${backendUrl}/search?${paramsOut.toString()}`, {
+      headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || '' },
+      cache: 'no-store'
+    })
     if (!res.ok) {
       return NextResponse.json({ error: 'Backend search failed' }, { status: 500 })
     }
@@ -70,4 +75,3 @@ export async function GET(request, { params }) {
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 })
   }
 }
-

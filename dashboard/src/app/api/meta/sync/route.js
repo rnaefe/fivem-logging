@@ -1,13 +1,18 @@
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
 // Ensures tables and upserts categories/eventTypes from backend meta/terms
 export async function GET() {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
 
     const fetchTerms = async () => {
-      const res = await fetch(`${backendUrl}/meta/terms?size=500`, { cache: 'no-store' })
+      const res = await fetch(`${backendUrl}/meta/terms?size=500`, {
+        headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || '' },
+        cache: 'no-store'
+      })
       if (!res.ok) {
         throw new Error(`Failed to fetch terms from backend (${res.status})`)
       }
@@ -66,4 +71,3 @@ export async function GET() {
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 })
   }
 }
-

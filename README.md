@@ -74,6 +74,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the deeper breakdown.
 - Search endpoint with pagination, filters, fuzzy player-name matching, date ranges, and full-text query support.
 - Stats endpoints for general activity, weapon usage, and vehicle usage.
 - Next.js dashboard with Discord OAuth, JWT sessions, server access checks, admin routes, and log/channel management screens.
+- Backend query endpoints protected by an internal key so browser traffic goes through Next.js access checks instead of talking to Elasticsearch-facing routes directly.
 
 ## Trade-Offs
 
@@ -81,7 +82,7 @@ This project chooses a thin ingest API over a heavyweight event broker. That kee
 
 It chooses Elasticsearch for log data and MySQL for application state. That is two datastores, but each one is doing the job it is good at: search-heavy documents in Elasticsearch, relational access control in MySQL.
 
-The current ingest route is intentionally lightweight and does not enforce the `servers.api_key` column yet. In production, keep ingest private, restrict it at the network/reverse-proxy layer, or wire API-key enforcement before exposing it publicly.
+The ingest route validates `x-telemetry-key` or `Authorization: Bearer ...` against the MySQL `servers.api_key` value and requires it to match the emitted `server.id`. Keep ingest private anyway; API keys reduce accidental exposure, they do not replace network boundaries.
 
 ## Setup
 
@@ -90,6 +91,12 @@ Start here:
 - [docs/SETUP.md](docs/SETUP.md) for installation and environment configuration.
 - [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for ingest, search, metadata, and stats endpoints.
 - [backend/database/README.md](backend/database/README.md) for the MySQL schema.
+
+For a local full-stack run:
+
+```bash
+docker compose up --build
+```
 
 ## Showcase
 
