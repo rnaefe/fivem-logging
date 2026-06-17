@@ -5,7 +5,7 @@ const pool = mysql.createPool({
   port: parseInt(process.env.MYSQL_PORT || '3306'),
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'fivem_logs',
+  database: process.env.MYSQL_DATABASE || 'elastic_telemetry',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -24,4 +24,3 @@ export async function queryOne(sql, params = []) {
   const rows = await query(sql, params)
   return rows[0] || null
 }
-

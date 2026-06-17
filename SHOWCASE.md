@@ -1,6 +1,8 @@
 # Showcase
 
-This gallery collects the current dashboard screenshots in one place.
+The dashboard is built for operators who need to move through logs quickly: server-scoped views, channel organization, search filters, stats, and admin surfaces on top of the same Elasticsearch/MySQL split described in the architecture docs.
+
+The screenshots below are not just UI chrome. They show the control plane around the log stream: the part that turns raw telemetry into something staff can actually search, filter, and act on.
 
 ## Screenshots
 

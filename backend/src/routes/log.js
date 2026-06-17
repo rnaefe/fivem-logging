@@ -2,7 +2,7 @@ const express = require('express');
 const client = require('../elastic/client');
 
 const router = express.Router();
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
+const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
 router.post('/log', async (req, res) => {
   try {

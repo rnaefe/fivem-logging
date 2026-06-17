@@ -1,22 +1,30 @@
 # API Reference
 
-The backend exposes a lightweight REST API mapping to Elasticsearch indices. 
+The backend API is intentionally small. It accepts JSON events, exposes searchable history, and asks Elasticsearch to do the heavy analytical work.
 
-The provided Lua wrapper script (`fivem-logging.lua`) interacts with the `/log` endpoint natively. Next.js proxies traffic to `/search`.
+Default index: `runtime-logs`, configurable with `ELASTICSEARCH_INDEX`.
 
----
+## Ingest
 
-## Ingest Endpoints
+### `POST /log`
 
-### 1. Ingest Log
+Indexes a telemetry event.
 
-**Endpoint:** `POST /log`
+The route accepts dynamic JSON, but it requires an event type. It normalizes common variants into the canonical `event_type` field:
 
-Submits a new log entry. The backend will automatically add a `@timestamp` field if one is not provided.
+- `event_type`
+- `eventType`
+- `type`
+- `event`
+- `payload.event_type`
+- `payload.eventType`
 
-**Content-Type:** `application/json`
+If `@timestamp` is missing, the backend adds the current server timestamp.
 
-**Request Body Example:**
+```http
+POST /log
+Content-Type: application/json
+```
 
 ```json
 {
@@ -24,13 +32,8 @@ Submits a new log entry. The backend will automatically add a `@timestamp` field
   "category": "inventory",
   "isDevServer": false,
   "server": {
-    "name": "My FiveM Server",
-    "id": "sv_123"
-  },
-  "payload": {
-    "action": "move",
-    "source": 1,
-    "count": 5
+    "name": "Payments Worker",
+    "id": "payments-worker-1"
   },
   "player": {
     "id": 1,
@@ -38,12 +41,15 @@ Submits a new log entry. The backend will automatically add a `@timestamp` field
     "identifiers": {
       "license": "license:abc123def"
     }
+  },
+  "payload": {
+    "action": "move",
+    "count": 5
   }
 }
 ```
 
-**Success Response:**
-`HTTP 201 Created`
+Success:
 
 ```json
 {
@@ -52,62 +58,148 @@ Submits a new log entry. The backend will automatically add a `@timestamp` field
 }
 ```
 
----
+Errors:
 
-## Query Endpoints
+- `400` when no event type can be resolved
+- `500` when Elasticsearch indexing fails
 
-### 1. Search Time-Series Logs
+## Search
 
-**Endpoint:** `GET /search`
+### `GET /search`
 
-Queries historical logs formatted for the dashboard. The dashboard automatically appends required parameters based on user permissions.
+Returns paginated log documents sorted newest first.
 
-**Parameters:**
-- `server_id` (String, required): The core server identifier.
-- `page` (Int, optional): Pagination index, default `1`.
-- `limit` (Int, optional): Elements per query, default `50`.
-- `query` (String, optional): Full-text search string.
-- `categories` (String, optional): Comma-separated list of log categories to filter.
-- `event_types` (String, optional): Comma-separated list of exact events to filter.
+The backend builds Elasticsearch Query DSL from request parameters. Exact filters stay exact, player-name search gets prefix/fuzzy matching, and broad text search is limited to known useful fields instead of running an unbounded query over everything.
 
-**Example Request:**
+Parameters:
+
+| Name | Type | Notes |
+| --- | --- | --- |
+| `server_id` | string | Matches `server.id`; dashboard proxy forces this from MySQL server identity. |
+| `page` | integer | Defaults to `1`. |
+| `limit` | integer | Defaults to `50`. |
+| `license` | string | Exact player license filter. |
+| `event_type` | string | Exact single event type. |
+| `event_types` | string | Comma-separated event types. |
+| `category` | string | Exact single category. |
+| `categories` | string | Comma-separated categories. |
+| `q` | string | Full-text search across selected player, server, event, and payload fields. |
+| `player_name` | string | Prefix/fuzzy player-name search. |
+| `server_name` | string | Case-insensitive wildcard match. |
+| `isDevServer` | boolean | `true` or `false`. |
+| `date_from` | date/string | Converted to ISO and used as `gte`. |
+| `date_to` | date/string | Converted to ISO and used as `lte`. |
+
+Example:
+
 ```http
-GET /search?server_id=sv_123&page=1&limit=25&categories=combat
+GET /search?server_id=payments-worker-1&page=1&limit=25&categories=worker&q=billing
 ```
 
-### 2. Analytical Stat Aggregation
-
-**Endpoint:** `GET /stats/weapons` and `GET /stats/vehicles`
-
-Leverages Elasticsearch's bucket aggregations to count common terms across the entire historical dataset matching the server.
-
-**Parameters:**
-- `server_id` (String, required)
-- `timeRange` (String, optional): Example `24h`, `7d`, `30d`.
-
-**Response (Weapons Example):**
+Response:
 
 ```json
 {
-  "data": [
-    { "key": "WEAPON_PISTOL", "doc_count": 142 },
-    { "key": "WEAPON_CARBINERIFLE", "doc_count": 35 }
-  ]
+  "items": [
+    {
+      "_id": "elastic_document_id",
+      "_source": {
+        "@timestamp": "2026-01-01T12:00:00.000Z",
+        "event_type": "job_completed",
+        "category": "worker"
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 25
 }
 ```
 
----
+## Stats
 
-## System Endpoints
+Stats endpoints require `server_id`. They run Elasticsearch aggregations with `size: 0` where possible, so the app server receives summaries instead of raw log pages.
 
-### 1. Metadata Fields
+### `GET /stats`
 
-**Endpoint:** `GET /meta/list`
+General activity summary.
 
-Returns a list of all distinct `categories` and `event_types` currently existing in the Elasticsearch database, allowing the Dashboard to dynamically populate dropdowns.
+Parameters:
 
-### 2. Health
+| Name | Type | Notes |
+| --- | --- | --- |
+| `server_id` | string | Required. |
+| `days` | integer | Defaults to `7`. |
 
-**Endpoint:** `GET /health`
+Returns:
 
-Quick ping to check if the Node service is alive.
+- total logs
+- today's log count
+- unique players by license cardinality
+- counts by category
+- counts by event type
+- daily trend buckets
+
+### `GET /stats/weapons`
+
+Combat weapon aggregation.
+
+Parameters:
+
+| Name | Type | Notes |
+| --- | --- | --- |
+| `server_id` | string | Required. |
+| `days` | integer | Defaults to `7`. |
+| `limit` | integer | Defaults to `10`. |
+
+Returns top `payload.weaponName.keyword` buckets, with nested kill/death filters for `player_killed` and `player_died`.
+
+### `GET /stats/vehicles`
+
+Vehicle aggregation.
+
+Parameters:
+
+| Name | Type | Notes |
+| --- | --- | --- |
+| `server_id` | string | Required. |
+| `days` | integer | Defaults to `7`. |
+| `limit` | integer | Defaults to `10`. |
+
+Returns top `payload.vehicleName.keyword` buckets.
+
+## Metadata
+
+### `GET /meta/terms`
+
+Returns distinct categories and event types discovered from indexed logs.
+
+Parameters:
+
+| Name | Type | Notes |
+| --- | --- | --- |
+| `size` | integer | Aggregation bucket size, defaults to `200`. |
+
+Response:
+
+```json
+{
+  "categories": ["inventory", "player", "txadmin"],
+  "eventTypes": ["item_swapped", "player_joining", "tx_banned"]
+}
+```
+
+The route merges primary `event_type` aggregation results with an `event_type.keyword` fallback for older mappings.
+
+## Health
+
+### `GET /health`
+
+Liveness check for the Node service.
+
+```json
+{
+  "message": "Server is running",
+  "status": "active"
+}
+```

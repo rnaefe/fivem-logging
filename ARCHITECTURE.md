@@ -1,372 +1,120 @@
-# Architecture Overview
+# Architecture
 
-`elastic-telemetry` is a flexible event ingest and search backend for systems that produce high-volume, semi-structured activity logs.
+Elastic Telemetry is built around a blunt operational rule:
 
-The core idea is simple:
+> The system being observed should spend almost no time thinking about telemetry.
 
-> accept dynamic JSON events, index them for search, and expose categorized, permission-aware views through a dashboard.
+The source runtime emits an event and gets back to work. The ingest API normalizes and indexes. Elasticsearch handles search and aggregation. MySQL handles users, sessions, servers, channels, and access mappings. Next.js sits in front as the authenticated control plane.
 
-The system is designed around three responsibilities:
+That is the architecture: move the expensive questions out of the runtime, keep the backend narrow, and put each datastore on the workload it actually fits.
 
-1. **Ingest fast** — receive telemetry without blocking the source application.
-2. **Search efficiently** — store dynamic event data in Elasticsearch instead of forcing it into rigid SQL tables.
-3. **Control access safely** — keep users, permissions, and environment mappings in MySQL, then proxy dashboard queries through an authenticated backend layer.
-
----
-
-## High-Level Architecture
+## System Map
 
 ```mermaid
 flowchart TD
-    A[Telemetry Emitters / Adapters] -->|HTTP JSON events| B[Node.js Ingest API]
+    A[Emitters / adapters] -->|POST /log| B[Express ingest API]
+    B -->|document index| C[(Elasticsearch)]
+    B -->|search + stats queries| C
 
-    B -->|Index dynamic events| C[(Elasticsearch)]
-    B -->|Search / stats queries| C
-
-    D[Staff / Operator Browser] -->|Login + dashboard usage| E[Next.js Dashboard]
-    E -->|OAuth identity| F[Discord OAuth2]
-    E -->|Users / roles / access mappings| G[(MySQL)]
-    E -->|Authorized search requests| B
-
-    C -->|Search results / aggregations| B
-    B -->|Filtered telemetry response| E
+    D[Operator browser] --> E[Next.js dashboard]
+    E -->|Discord OAuth2| F[Discord API]
+    E -->|users, sessions, servers, channels, access| G[(MySQL)]
+    E -->|authorized proxy request| B
 ```
 
----
+## Runtime Edge: Emit And Leave
 
-## Request Flow
+Runtime emitters capture useful local context:
 
-### 1. Event ingest
+- service or server name
+- stable source identifier
+- environment flag, such as production, staging, or development
+- actor/user identifiers when the runtime has them
+- event category and event type
+- event-specific payload fields
 
-Telemetry clients send JSON payloads into the ingest API.
+Then the emitter sends JSON over HTTP. That is the right amount of work at the edge. The adapter enriches the event while the data is still cheap to know, but it does not index, aggregate, retry forever, or block the host runtime with database logic.
 
-```txt
-client / adapter
-      ↓
-POST /log
-      ↓
-Node.js ingest service
-      ↓
-Elasticsearch index
-```
+Failure mode: if the backend is unavailable, the observed runtime should continue. Telemetry loss is bad; taking down the system being observed is worse.
 
-The ingest layer does not require a rigid event schema. As long as the payload follows the expected envelope, the event body can stay flexible.
+## Ingest API: Thin By Design
 
-This makes the system useful for different sources:
+The backend is an Express service with four jobs:
 
-- Lua runtime adapters
-- Node.js services
-- custom backend emitters
-- game/server activity logs
-- operational event streams
+- `POST /log` accepts telemetry, normalizes `event_type`, stamps `@timestamp` when missing, and indexes the document.
+- `GET /search` builds structured Elasticsearch queries from filters and pagination parameters.
+- `GET /stats`, `/stats/weapons`, and `/stats/vehicles` run aggregations where the indexed data already lives.
+- `GET /meta/terms` returns discovered categories and event types from Elasticsearch terms aggregations.
 
----
+The service boots the Elasticsearch index if it does not exist. The mapping locks down the fields the rest of the app depends on:
 
-### 2. Dashboard search
+- `@timestamp` as `date`
+- `event_type`, `category`, server IDs, player identifiers, and common payload keys as keyword/searchable fields
+- `payload` as a dynamic object for event-specific metadata
 
-Operators do not query Elasticsearch directly.
+That trade-off matters. Strict schemas are clean until every new event type needs a migration. Fully dynamic schemas are flexible until the dashboard cannot rely on anything. This mapping keeps the contract small and lets the payload breathe.
 
-```txt
-browser
-  ↓
-Next.js dashboard
-  ↓
-auth + RBAC check in MySQL
-  ↓
-proxied search request
-  ↓
-Node.js ingest/search API
-  ↓
-Elasticsearch
-```
+## Elasticsearch: The Hot Log Store
 
-This keeps search access controlled by application-level permissions instead of exposing the search backend to the frontend.
+Elasticsearch owns the log workload because the workload is search:
 
----
+- exact filters on license, event type, category, server, and dev-server flag
+- date ranges over `@timestamp`
+- fuzzy and prefix matching for player names
+- full-text search across selected player, server, event, and payload fields
+- bucket aggregations for category, event type, weapons, vehicles, daily trends, and unique players
 
-## Component Breakdown
+The backend does not fetch a pile of documents and count them in JavaScript. Stats endpoints use `size: 0`, `terms`, `date_histogram`, `value_count`, `filter`, and `cardinality` aggregations. Less app code, less network transfer, better use of the engine that already has the index.
 
-## 1. Telemetry Emitters
+## MySQL: The Control Plane Store
 
-Telemetry emitters are lightweight adapters that run inside the source application.
+MySQL is intentionally not the log sink. It stores structured state:
 
-Their job is not to process data deeply. Their job is to capture context and flush events quickly.
+- `servers`
+- `users`
+- `sessions`
+- `log_channels`
+- `user_server_access`
+- `server_admins`
+- optional daily `weapon_stats` and `vehicle_stats` tables
 
-Responsibilities:
+That keeps user identity, sessions, server registration, channel configuration, and access rules in a relational model. The dashboard can answer "who can see this server?" with joins and unique constraints instead of asking a document index to impersonate an authorization database.
 
-- collect runtime or activity context
-- shape the event into a JSON payload
-- send it asynchronously to the ingest API
-- avoid blocking the host application's main execution path
-- fail safely if the ingest backend is unavailable
+## Dashboard: Authenticated Query Broker
 
-Design principle:
+The browser never needs Elasticsearch credentials.
 
-> telemetry should never crash or slow down the system it observes.
+The Next.js dashboard handles Discord OAuth, creates JWT-backed sessions, stores Discord tokens in MySQL, and resolves the current user from cookies. API routes then enforce access before proxying search requests.
 
-If the ingest service is temporarily unreachable, emitters should swallow or buffer failures depending on the adapter implementation.
+For server search, the route:
 
----
+1. loads the current user
+2. resolves the requested server by numeric ID or identifier
+3. allows global admins and server admins/moderators
+4. otherwise requires `user_server_access`
+5. forwards the request to the backend with `server_id` forced to the resolved server identifier
 
-## 2. Node.js Ingest API
+That last detail is small but important. The frontend does not get to decide which server the backend searches just because it sent a query string.
 
-The ingest API is the throughput-oriented backend layer.
+## Security Boundary
 
-It exposes endpoints such as:
+Authentication proves who the user is. Authorization decides what telemetry they can query.
 
-```txt
-POST /log      -> receive telemetry events
-GET  /search   -> query indexed events
-GET  /stats    -> aggregate event statistics
-```
+Current hard boundaries:
 
-Responsibilities:
+- dashboard routes require a valid session for protected data
+- server search checks MySQL access before proxying
+- Elasticsearch is not exposed directly to the browser
+- backend query construction uses structured Query DSL objects
 
-- accept JSON telemetry payloads
-- perform lightweight validation
-- normalize required envelope fields
-- index events into Elasticsearch
-- proxy search/stat requests into Elasticsearch
-- return dashboard-ready responses
+Current deployment boundary:
 
-Technology:
+- `POST /log` is lightweight and does not currently enforce the `servers.api_key` column
 
-- Node.js
-- Express
-- Elasticsearch client
-- structured JSON payloads
+So production deployments should keep ingest private, firewall it to trusted emitters, put it behind a reverse proxy with allowlists, or add API-key enforcement before public exposure. That is an intentional honesty point: high-volume ingest stays cheap, but public ingest needs a gate.
 
-The ingest service is intentionally kept separate from the dashboard. This allows event ingestion and operator-facing UI concerns to evolve independently.
+## Why The Split Holds Up
 
----
+The source runtime emits and leaves. Express keeps the write path narrow. Elasticsearch handles the expensive read path. MySQL handles relational truth. Next.js enforces operator access before the query reaches the search backend.
 
-## 3. Elasticsearch: Dynamic Event Storage
-
-Elasticsearch stores the high-volume telemetry stream.
-
-This is where dynamic event payloads belong.
-
-Why Elasticsearch?
-
-- event bodies are semi-structured
-- fields can vary between event types
-- operators need fast search
-- text queries, filters, and aggregations matter more than relational joins
-- telemetry data grows quickly under production usage
-
-Example event shape:
-
-```json
-{
-  "timestamp": "2026-01-01T12:00:00.000Z",
-  "serverId": "main-01",
-  "category": "inventory",
-  "event": "item_added",
-  "userId": "12345",
-  "payload": {
-    "item": "radio",
-    "amount": 1,
-    "source": "shop"
-  }
-}
-```
-
-The `payload` object is intentionally flexible. Different systems can emit different event shapes without requiring a database migration every time the event model changes.
-
----
-
-## 4. MySQL: Configuration and Access Control
-
-MySQL stores structured application state.
-
-It is not used for high-volume telemetry events.
-
-Responsibilities:
-
-- users
-- OAuth identities
-- server/environment definitions
-- log channel configuration
-- role and permission mappings
-- user-to-server access assignments
-
-Example relational data:
-
-```txt
-users
-servers
-log_channels
-user_server_access
-roles
-permissions
-```
-
-This split keeps the architecture clean:
-
-```txt
-Elasticsearch -> dynamic telemetry/search data
-MySQL         -> structured config, users, RBAC, access mappings
-```
-
-Trying to store all telemetry events in SQL would make the system harder to evolve and less efficient for search-heavy workflows.
-
----
-
-## 5. Next.js Dashboard
-
-The dashboard is the operator-facing control surface.
-
-Responsibilities:
-
-- handle user authentication
-- enforce RBAC before showing data
-- display searchable telemetry views
-- provide category/event/user-based filters
-- proxy search requests through the backend
-- prevent direct frontend access to Elasticsearch
-
-Technology:
-
-- Next.js
-- React
-- App Router
-- Discord OAuth2
-- JWT-based auth flow
-- MySQL-backed permission checks
-
-The dashboard exists to turn raw event data into something operators can actually use.
-
-Instead of reading raw logs, operators can search by:
-
-- user
-- event type
-- category
-- server/environment
-- time range
-- structured payload fields
-
----
-
-## 6. Authorization Model
-
-The dashboard checks access before any telemetry query is allowed.
-
-A typical access flow:
-
-```txt
-user logs in
-  ↓
-OAuth identity is resolved
-  ↓
-user permissions are loaded from MySQL
-  ↓
-dashboard checks accessible servers / log channels
-  ↓
-search request is parameterized
-  ↓
-ingest/search API queries Elasticsearch
-```
-
-This prevents users from querying environments or log categories they were not assigned to.
-
-The important rule:
-
-> users never get unrestricted search access just because they are authenticated.
-
-Authentication proves identity. Authorization decides what telemetry they can see.
-
----
-
-## Security Posture
-
-## 1. No direct Elasticsearch exposure
-
-The browser never talks to Elasticsearch directly.
-
-All search requests go through the dashboard/backend layer, where authentication and RBAC checks can be enforced.
-
----
-
-## 2. Internal ingest boundary
-
-The ingest API is designed for speed, so the ingest endpoint should be protected at the infrastructure level.
-
-Recommended deployment posture:
-
-- keep ingest ports private when possible
-- whitelist trusted emitters
-- place services behind a firewall or private network
-- avoid exposing raw ingest endpoints publicly
-- use reverse proxy rules when public access is unavoidable
-
-The ingest endpoint is intentionally lightweight. Heavy per-request authentication can become expensive under high event volume, so network-level isolation is part of the architecture.
-
----
-
-## 3. Query safety
-
-Search requests are built as structured Elasticsearch Query DSL objects.
-
-User input should be treated as parameters, not raw query strings.
-
-This reduces the risk of unsafe query construction and keeps dashboard search behavior predictable.
-
----
-
-## 4. Permission-aware search
-
-Search requests should always include permission-derived constraints.
-
-For example:
-
-```txt
-user can access server A and category inventory
-  ↓
-query is constrained to server=A AND category=inventory
-```
-
-This avoids relying only on frontend visibility rules.
-
----
-
-## Deployment Model
-
-A typical self-hosted deployment looks like this:
-
-```txt
-Nginx / reverse proxy
-        ↓
-Next.js dashboard
-        ↓
-Node.js ingest/search API
-        ↓
-Elasticsearch
-
-MySQL stores users, roles, access mappings, and configuration.
-```
-
-Recommended services:
-
-- `dashboard`
-- `ingest-api`
-- `elasticsearch`
-- `mysql`
-- `nginx` or another reverse proxy
-
-The stack can be deployed on a self-managed VPS using Docker-based workflows.
-
----
-
-## Why This Architecture Works
-
-`elastic-telemetry` separates concerns clearly:
-
-- emitters only emit
-- ingest API handles event intake and search proxying
-- Elasticsearch handles dynamic event search
-- MySQL handles structured relational state
-- dashboard handles authentication, permissions, and operator UX
-
-This keeps the system flexible enough for dynamic telemetry payloads while still maintaining permission-aware access and searchable operator workflows.
-
-The result is a backend system that turns messy runtime logs into structured, searchable, dashboard-ready event data.
+It is not magic. It is boring separation of responsibilities applied to a loud telemetry problem, which is exactly why it works.

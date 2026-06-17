@@ -1,85 +1,72 @@
 # Database Setup
 
-## Requirements
-
-- MySQL 8.0+ or MariaDB 10.5+
+MySQL is the control-plane database. Logs do not live here; Elasticsearch handles the high-volume event stream. MySQL stores the things that need relational guarantees: users, sessions, registered servers, channel configuration, and access mappings.
 
 ## Quick Setup
 
-1. Create the database and run the schema:
+From the repository root:
 
 ```bash
-mysql -u root -p < schema.sql
+mysql -u root -p < backend/database/schema.sql
 ```
 
-2. Or manually:
+Or manually:
 
 ```sql
-CREATE DATABASE fivem_logs;
-USE fivem_logs;
--- Then copy/paste contents of schema.sql
+CREATE DATABASE elastic_telemetry;
+USE elastic_telemetry;
+SOURCE backend/database/schema.sql;
 ```
 
-## Tables Overview
+## Tables
 
-### `servers`
-FiveM servers registered in the system. Each server has:
-- Unique identifier
-- Discord Guild ID (for role-based access)
-- API key for authentication
+| Table | Purpose |
+| --- | --- |
+| `servers` | Registered telemetry sources. `identifier` should match the emitter's server ID, and `discord_guild_id` is used for access sync. |
+| `users` | Discord-authenticated dashboard users. |
+| `sessions` | JWT session records plus Discord access/refresh token storage. |
+| `log_channels` | Dashboard channel definitions, including event-type groups, colors, and icons. |
+| `user_server_access` | Cached user-to-server access. |
+| `server_admins` | Per-server admin/moderator/viewer assignments by Discord ID. |
+| `weapon_stats` | Optional daily weapon rollups. Runtime stats currently come from Elasticsearch aggregations. |
+| `vehicle_stats` | Optional daily vehicle rollups. Runtime stats currently come from Elasticsearch aggregations. |
 
-### `users`
-Discord-authenticated users with:
-- Discord ID, username, avatar
-- Admin flag
+## Server Registration
 
-### `sessions`
-JWT session tokens for authenticated users.
-
-### `log_channels`
-Categories/channels for organizing logs:
-- Name and slug
-- Event types that belong to this channel
-- Color and icon for UI
-
-### `role_permissions`
-Discord role-based access control:
-- Which roles can view which channels
-- Permissions: view, search, export
-
-### `user_server_access`
-Cache of user's Discord roles per server.
-
-### `server_admins`
-Users who can manage server settings (admin/moderator/viewer levels).
-
-### `weapon_stats` & `vehicle_stats`
-Aggregated stats for dashboard:
-- Daily counts per weapon/vehicle
-- Kill counts for weapons
-
-## Sample Data
-
-The schema includes sample data for testing:
-- 1 test server
-- 5 default log channels (Player Activity, Chat, Inventory, Admin Actions, Resources)
-
-## Discord Setup
-
-1. Create a Discord Application at https://discord.com/developers/applications
-2. Add OAuth2 redirect URL: `http://localhost:3001/api/auth/callback`
-3. Enable required scopes: `identify`, `email`, `guilds`, `guilds.members.read`
-4. Copy Client ID and Client Secret to `.env`
-
-## Role-based Access
-
-To restrict a channel to specific roles:
+Create a server row before expecting dashboard search to line up cleanly with logs:
 
 ```sql
--- Allow only role ID 123456789 to view Admin Actions channel
-INSERT INTO role_permissions (server_id, discord_role_id, channel_id, can_view, can_search)
-SELECT 1, '123456789', id, TRUE, TRUE FROM log_channels WHERE slug = 'admin-actions';
+INSERT INTO servers (name, identifier, discord_guild_id, api_key)
+VALUES ('Payments Worker', 'payments-worker-1', '123456789012345678', 'telemetry_3d31edce-c1a9-4ba1-837c-f905232c4a1e');
 ```
 
-If no permissions are set for a channel, it's visible to all authenticated users.
+The `identifier` should match the `server.id` or source ID emitted in log documents.
 
+## Access
+
+Grant a user access to a server:
+
+```sql
+INSERT INTO user_server_access (user_id, server_id)
+VALUES (1, 1)
+ON DUPLICATE KEY UPDATE last_verified = NOW();
+```
+
+Grant server-level admin rights:
+
+```sql
+INSERT INTO server_admins (server_id, discord_id, permission_level)
+VALUES (1, '123456789012345678', 'admin');
+```
+
+Make a global dashboard admin:
+
+```sql
+UPDATE users
+SET is_admin = TRUE
+WHERE discord_id = '123456789012345678';
+```
+
+## Important Detail
+
+`servers.api_key` exists in the schema, but the current backend ingest route does not enforce it. Treat that column as ready state for API-key hardening, not as active protection. Until enforcement is added, protect ingest with network controls.

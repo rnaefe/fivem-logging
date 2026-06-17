@@ -24,7 +24,7 @@ export default function SettingsPage() {
 
   const copyApiKey = () => {
     // In real implementation, you'd fetch the actual API key
-    navigator.clipboard.writeText('fivem_xxx-xxx-xxx')
+    navigator.clipboard.writeText('telemetry_xxx-xxx-xxx')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

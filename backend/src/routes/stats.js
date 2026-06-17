@@ -2,7 +2,7 @@ const express = require('express');
 const client = require('../elastic/client');
 
 const router = express.Router();
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
+const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
 // Get top weapons (aggregation on combat events)
 router.get('/stats/weapons', async (req, res) => {
@@ -282,4 +282,3 @@ router.get('/stats', async (req, res) => {
 });
 
 module.exports = router;
-

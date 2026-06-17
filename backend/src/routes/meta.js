@@ -2,7 +2,7 @@ const express = require('express');
 const client = require('../elastic/client');
 
 const router = express.Router();
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
+const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
 // Return distinct categories and event_types from ES
 router.get('/meta/terms', async (req, res) => {
@@ -46,4 +46,3 @@ router.get('/meta/terms', async (req, res) => {
 });
 
 module.exports = router;
-

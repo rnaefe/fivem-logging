@@ -1,6 +1,6 @@
 const client = require('./client');
 
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
+const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'runtime-logs';
 
 async function bootstrap() {
   try {
@@ -37,7 +37,7 @@ async function bootstrap() {
                     license: { type: "keyword" },
                     discord: { type: "keyword" },
                     live: { type: "keyword" },
-                    fivem: { type: "keyword" }
+                    external: { type: "keyword" }
                   }
                 }
               }

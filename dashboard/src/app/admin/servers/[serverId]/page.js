@@ -300,7 +300,7 @@ export default function ServerManagePage() {
               API Key
             </CardTitle>
             <CardDescription className="text-zinc-400">
-              Use this in your FiveM server.cfg: <code className="bg-zinc-800 px-1 rounded">set logs_api_key &quot;{server.api_key?.slice(0, 15)}...&quot;</code>
+              Use this from your telemetry emitter: <code className="bg-zinc-800 px-1 rounded">{server.api_key?.slice(0, 15)}...</code>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -548,4 +548,3 @@ export default function ServerManagePage() {
     </DashboardLayout>
   )
 }
-

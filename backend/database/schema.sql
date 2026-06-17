@@ -1,8 +1,8 @@
--- FiveM Logs Dashboard - MySQL Schema
+-- Elastic Telemetry Dashboard - MySQL Schema
 -- Run this to set up your database
 
-CREATE DATABASE IF NOT EXISTS fivem_logs;
-USE fivem_logs;
+CREATE DATABASE IF NOT EXISTS elastic_telemetry;
+USE elastic_telemetry;
 
 -- Servers table
 CREATE TABLE IF NOT EXISTS servers (
@@ -131,4 +131,3 @@ INSERT INTO log_channels (server_id, name, slug, description, event_types, color
 (1, 'Inventory', 'inventory', 'Item transfers and purchases', '["item_swapped", "item_bought", "diamonds_swapped"]', '#f59e0b', 'package'),
 (1, 'Admin Actions', 'admin-actions', 'TxAdmin and moderator actions', '["tx_kicked", "tx_banned", "tx_warned", "tx_healed", "tx_dm", "tx_spectate_start", "tx_action_revoked", "tx_announcement"]', '#ef4444', 'shield'),
 (1, 'Resources', 'resources', 'Server resource start/stop events', '["resource_start", "resource_stop"]', '#8b5cf6', 'server');
-

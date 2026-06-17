@@ -108,7 +108,7 @@ export async function PATCH(request, { params }) {
     }
     
     const { serverId } = await params
-    const newApiKey = `fivem_${crypto.randomUUID()}`
+    const newApiKey = `telemetry_${crypto.randomUUID()}`
     
     await query(
       `UPDATE servers SET api_key = ? WHERE id = ?`,
@@ -121,4 +121,3 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

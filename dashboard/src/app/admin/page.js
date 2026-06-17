@@ -198,7 +198,7 @@ export default function AdminPage() {
                   Servers
                 </CardTitle>
                 <CardDescription className="text-zinc-400">
-                  Manage FiveM server connections
+                  Manage telemetry source connections
                 </CardDescription>
               </div>
               <Button 
@@ -380,4 +380,3 @@ export default function AdminPage() {
     </DashboardLayout>
   )
 }
-

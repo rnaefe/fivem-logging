@@ -5,7 +5,7 @@ import { AuthProvider } from "@/lib/useAuth"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "FiveM Logs Dashboard",
+  title: "Elastic Telemetry Dashboard",
   description: "Modern log management dashboard",
 }
 
@@ -20,4 +20,3 @@ export default function RootLayout({ children }) {
     </html>
   )
 }
-

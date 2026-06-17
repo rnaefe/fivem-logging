@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NextJS-Dark.svg" width="60" alt="NextJS"/>
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NodeJS-Dark.svg" width="60" alt="NodeJS"/>
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/refs/heads/main/icons/Elasticsearch-Dark.svg" width="60" alt="Elastic Search"/>
+  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NextJS-Dark.svg" width="60" alt="Next.js"/>
+  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NodeJS-Dark.svg" width="60" alt="Node.js"/>
+  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/refs/heads/main/icons/Elasticsearch-Dark.svg" width="60" alt="Elasticsearch"/>
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/MySQL-Dark.svg" width="60" alt="MySQL"/>
 
   <br/>
@@ -9,90 +9,98 @@
 
   <h1>Elastic Telemetry</h1>
   <p>
-    A high-throughput, asynchronous telemetry and log management pipeline.
+    High-volume runtime logs, searchable in seconds, without making the source runtime do database work.
   </p>
 
   <p>
-    <a href="#showcase">Showcase</a> •
+    <a href="#why-it-works">Why it works</a> •
     <a href="#architecture">Architecture</a> •
-    <a href="CONTRIBUTING.md">Contributing</a>
-  </p>
-
-  <p>
-    <img src="https://img.shields.io/badge/version-1.0.0-blue.svg?style=for-the-badge" alt="Version"/>
-    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License"/>
-    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" alt="PRs Welcome"/>
+    <a href="docs/SETUP.md">Setup</a> •
+    <a href="SHOWCASE.md">Showcase</a>
   </p>
 </div>
 
-<hr/>
+---
 
-## Overview
+## What This Is
 
-**Elastic Telemetry** is a decoupled, event-driven log management system designed to handle high-frequency data streams. Built around **Elasticsearch** for rapid querying and aggregations, and **Next.js** for a modern telemetry dashboard, it provides a robust infrastructure capable of scaling to millions of events with minimal latency overhead.
+Elastic Telemetry is a telemetry pipeline for noisy, semi-structured runtime events. Any process that can send JSON can use it: workers, backend services, automation jobs, edge runtimes, multiplayer servers, or custom adapters. The source runtime emits events, a small Node.js service indexes them, Elasticsearch does the heavy search work, and a Next.js dashboard gives operators a permission-aware control surface.
 
-While initially developed to solve the performance bottlenecks of game server logging (replacing slow, unsearchable Discord webhooks for FiveM), the ingest API is completely client-agnostic. It serves as a production-ready telemetry foundation that you can fork, expand, and deploy for any high-traffic application.
+The impressive part is not that it stores logs. Plenty of systems store logs. The useful part is where the work happens:
 
-## Features
+- The source runtime only captures context and fires an async HTTP request.
+- Node.js normalizes the event envelope and writes to Elasticsearch.
+- Elasticsearch owns search, filtering, date ranges, fuzzy player lookup, and aggregations.
+- MySQL owns structured state: users, sessions, servers, log channels, and access mappings.
+- Next.js owns authentication and query proxying so the browser never gets raw Elasticsearch access.
 
-- **High-Throughput Ingestion:** Custom Node.js backend handles thousands of events per second via optimized async bulk processing.
-- **Elasticsearch Powered:** Full-text search, pagination, and millisecond-level aggregations over massive datasets.
-- **Secure OAuth2 Auth:** Seamless staff login using Discord OAuth. Automated access resolution via Guild membership roles.
-- **Rich Analytics & Aggregation:** Automated statistical tracking of complex data (e.g., economic transactions, entity spawns, usage metrics).
-- **Modern Dashboard:** Next.js App Router, `shadcn/ui`, and Tailwind CSS combined for a flawless, real-time user experience.
-- **Client-Agnostic Core (with FiveM Adapter):** While the REST API accepts payloads from any source, it includes a lightweight, non-blocking Lua export wrapper for instant drop-in to FiveM frameworks (QBCore, ESX, or Custom).
+That split is the whole trick. The hot path stays thin, the query path stays powerful, and operator permissions stay in a relational system that is good at relational state.
 
-## Showcase
+## Why It Works
 
-Browse the current UI and dashboard flow in the dedicated [Showcase](SHOWCASE.md) gallery.
-
-## Showcase Preview
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/66525288-fdf6-42b3-a729-0df39d6e3f38" alt="Showcase screenshot 1" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/51c39270-747f-4201-8bdc-38ba39a77791" alt="Showcase screenshot 2" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2b56df47-e797-4efa-bc20-244a7ecd202e" alt="Showcase screenshot 3" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/d69aaf7f-9db9-49a5-850d-f013109c946c" alt="Showcase screenshot 4" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/785ff1c8-c387-4b21-9a2a-73e2bbca9044" alt="Showcase screenshot 5" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/d3a2ad1e-abe6-4566-8741-5cae6609bdc9" alt="Showcase screenshot 6" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/7d89c6a6-56f6-4887-8900-35b14c1cdfa5" alt="Showcase screenshot 7" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/d56b5438-983b-47f2-a68d-d7e73f24729e" alt="Showcase screenshot 8" width="100%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/c0c79f45-6751-463f-86f8-3771d9e229fe" alt="Showcase screenshot 9" width="100%" />
-</p>
+- **Runtime cost moved to the edge, but not too much.** Emitters collect local context, attach server/service metadata, and post JSON. They do not try to search, aggregate, or persist locally.
+- **The backend is deliberately small.** Express accepts `/log`, stamps `@timestamp` when needed, normalizes common `event_type` variants, and indexes one document into the configured Elasticsearch index.
+- **Search is built from structured filters.** `/search` composes Elasticsearch Query DSL for licenses, event types, categories, server IDs, dev-server flags, date ranges, fuzzy player names, and broad text search across known payload fields.
+- **Analytics run where the data lives.** Weapon, vehicle, category, event-type, daily trend, and unique-player stats use Elasticsearch aggregations instead of replaying logs through the app server.
+- **Access control is not hidden in the UI.** Dashboard API routes load the current user from a JWT-backed session, check MySQL access tables, then proxy allowed queries to the backend with the server identifier forced into the request.
+- **Dynamic payloads stay dynamic.** The Elasticsearch mapping pins the fields the system depends on, while `payload` remains `dynamic: true` for event-specific metadata.
 
 ## Architecture
 
-The system operates on an event-driven decoupled model optimized for speed:
+```mermaid
+flowchart TD
+    A[Runtime emitters / adapters] -->|async JSON events| B[Express ingest API]
+    B -->|index documents| C[(Elasticsearch)]
+    B -->|search + aggregations| C
 
-1. **Ingest (Node.js):** A lightweight API that non-blockingly accepts massive batches of JSON telemetry from any client.
-2. **Storage (Elasticsearch):** Acts as the timeseries database for billions of logs, capable of instant aggregations and full-text searches.
-3. **Relational Storage (MySQL):** Used exclusively for managing configuration and state data (like `servers` and `users`).
-4. **Dashboard (Next.js):** The proxy layer. It verifies OAuth credentials via MySQL before securely querying Elasticsearch on the user's behalf.
+    D[Staff browser] --> E[Next.js dashboard]
+    E -->|Discord OAuth + JWT session| F[Discord]
+    E -->|users, sessions, servers, channels, access| G[(MySQL)]
+    E -->|authorized search proxy| B
+```
 
-For a deeper dive into the system design, please review the full **[Architecture Overview](ARCHITECTURE.md)**.
+The system is intentionally split into two backends:
 
-## Repository Structure
+- `backend/` is the fast path: ingest, search, metadata, and stats against Elasticsearch.
+- `dashboard/` is the control plane: Discord OAuth, sessions, MySQL-backed access checks, admin screens, and operator UI.
 
-```text
-elastic-telemetry/
-├── backend/               # Node.js Ingest REST API & Elasticsearch mapping
-├── dashboard/             # Next.js 14 Web Application (UI & Auth)
-├── docs/                  # Extensive technical documentation
-├── ARCHITECTURE.md        # Deep dive into distributed architecture
-└── CONTRIBUTING.md        # Guidelines for pull requests and community
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the deeper breakdown.
+
+## What You Get
+
+- Runtime adapter pattern for sending structured events from any service that can make HTTP requests.
+- Client-agnostic JSON ingest endpoint for anything that can `POST /log`.
+- Elasticsearch bootstrap mapping for timestamp, event type, category, server, player identifiers, and dynamic payload fields.
+- Search endpoint with pagination, filters, fuzzy player-name matching, date ranges, and full-text query support.
+- Stats endpoints for general activity, weapon usage, and vehicle usage.
+- Next.js dashboard with Discord OAuth, JWT sessions, server access checks, admin routes, and log/channel management screens.
+
+## Trade-Offs
+
+This project chooses a thin ingest API over a heavyweight event broker. That keeps deployment simple and latency low, but it means extreme burst buffering belongs in infrastructure or a future queue layer.
+
+It chooses Elasticsearch for log data and MySQL for application state. That is two datastores, but each one is doing the job it is good at: search-heavy documents in Elasticsearch, relational access control in MySQL.
+
+The current ingest route is intentionally lightweight and does not enforce the `servers.api_key` column yet. In production, keep ingest private, restrict it at the network/reverse-proxy layer, or wire API-key enforcement before exposing it publicly.
+
+## Setup
+
+Start here:
+
+- [docs/SETUP.md](docs/SETUP.md) for installation and environment configuration.
+- [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for ingest, search, metadata, and stats endpoints.
+- [backend/database/README.md](backend/database/README.md) for the MySQL schema.
+
+## Showcase
+
+Browse the full dashboard gallery in [SHOWCASE.md](SHOWCASE.md).
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/66525288-fdf6-42b3-a729-0df39d6e3f38" alt="Dashboard screenshot 1" width="100%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/51c39270-747f-4201-8bdc-38ba39a77791" alt="Dashboard screenshot 2" width="100%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/2b56df47-e797-4efa-bc20-244a7ecd202e" alt="Dashboard screenshot 3" width="100%" />
+</p>

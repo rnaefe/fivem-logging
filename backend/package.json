@@ -1,5 +1,5 @@
 {
-  "name": "fivem-log-es-test",
+  "name": "elastic-telemetry-backend",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -8,14 +8,14 @@
     "test": "node test_integration.js"
   },
   "keywords": [
-    "fivem",
+    "telemetry",
     "logs",
     "elasticsearch",
     "dashboard"
   ],
   "author": "",
   "license": "ISC",
-  "description": "FiveM logging backend with Elasticsearch",
+  "description": "Runtime telemetry backend with Elasticsearch",
   "dependencies": {
     "@elastic/elasticsearch": "^9.2.0",
     "dotenv": "^16.4.0",

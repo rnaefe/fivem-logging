@@ -36,7 +36,7 @@ export async function POST(request) {
     }
     
     // Generate API key
-    const apiKey = `fivem_${crypto.randomUUID()}`
+    const apiKey = `telemetry_${crypto.randomUUID()}`
     
     const result = await query(
       `INSERT INTO servers (name, identifier, discord_guild_id, api_key)
@@ -55,4 +55,3 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

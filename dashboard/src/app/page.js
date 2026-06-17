@@ -90,7 +90,7 @@ export default function DashboardPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-white">Dashboard</h2>
           <p className="text-zinc-400 mt-1">
-            {currentServer ? `${currentServer.name} - Overview` : 'FiveM log management system overview'}
+            {currentServer ? `${currentServer.name} - Overview` : 'Runtime telemetry overview'}
           </p>
         </div>
 

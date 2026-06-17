@@ -61,7 +61,7 @@ export function Sidebar() {
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 rounded-lg"></div>
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            FiveM Logs
+            Elastic Telemetry
           </h1>
         </Link>
         
@@ -171,4 +171,3 @@ function BackendStatus() {
     </div>
   )
 }
-

@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "fivem-log-es-test",
+      "name": "elastic-telemetry-backend",
       "dependencies": {
         "@elastic/elasticsearch": "^9.2.0",
         "dotenv": "^16.4.0",
